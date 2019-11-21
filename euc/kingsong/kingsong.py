@@ -8,6 +8,7 @@ import struct
 import argparse
 
 from euc.base import EUCBase
+import euc.utils
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,6 @@ class KS(EUCBase):
 
         self._init_t = 0.0
         self.is_connected = False
-        self._tasks = []
 
 
     async def run(self):
@@ -43,8 +43,8 @@ class KS(EUCBase):
                 try:
                     await self.ble_connect()
                 except dbussy.DBusError as e:
-                    logger.error(e)
-            await asyncio.sleep(10)
+                    logger.debug(e)
+            await asyncio.sleep(30)
 
     def update_ks_properties(self, value):
         if len(value) > 16:
@@ -99,30 +99,30 @@ class KS(EUCBase):
         t = time.time()
         if t - self._init_t >= 2.0:
             self._init_t = t
-            logger.info("initializing...")
+            logger.debug("initializing...")
             char_itf = await self.bluez[char_path].get_async_interface(
                 "org.bluez.GattCharacteristic1"
             )
             await char_itf.WriteValue(KS_INIT_MAGIC, {})
             await char_itf.StartNotify()
-            logger.info("initialized")
+            logger.debug("initialized")
         else:
-            logger.info("just initialized %.1f seconds ago, skipping", t - self._init_t)
+            logger.debug("just initialized %.1f seconds ago, skipping", t - self._init_t)
 
     async def ble_connect(self):
-        logger.info("connecting...")
+        logger.debug("connecting...")
         device_itf = await self.bluez[self.device_path].get_async_interface(
             "org.bluez.Device1"
         )
         await device_itf.Connect()
         self.is_connected = await device_itf.Connected
-        logger.info("connected")
+        logger.debug("connected")
         itf = await self.bluez["/"].get_async_interface(
             "org.freedesktop.DBus.ObjectManager"
         )
         managed_objects = await itf.GetManagedObjects()
         char_path = next((k for k, v in managed_objects[0].items() if is_ks(v)), None)
-        logger.info("characteristic path: %s", char_path)
+        logger.debug("characteristic path: %s", char_path)
         if char_path:
             await self.ks_init(char_path)
 
@@ -147,7 +147,7 @@ class KS(EUCBase):
                     and "Connected" in changed_properties
                 ):
                     self.is_connected = changed_properties["Connected"][1]
-                logger.info(
+                logger.debug(
                     "prop changed on %s %s %r %r",
                     interface_name,
                     object_path,
@@ -164,7 +164,7 @@ class KS(EUCBase):
     def objects_removed(self, object_path, args):
         if not args[0].startswith(self.device_path):
             return
-        logger.info("signal received: object “%s” removed: %s", object_path, repr(args))
+        logger.debug("signal received: object “%s” removed: %s", object_path, repr(args))
 
     @ravel.signal(
         name="object_added",
@@ -175,22 +175,12 @@ class KS(EUCBase):
     def objects_added(self, object_path, args):
         if not args[0].startswith(self.device_path):
             return
-        logger.info("signal received: object “%s” added: %s", object_path, repr(args))
+        logger.debug("signal received: object “%s” added: %s", object_path, repr(args))
         if False and args[0] == self.device_path:
-            self._create_task(self.ble_connect())
+            euc.utils.create_task(self.ble_connect())
         elif args[0].startswith(self.device_path):
             gatt_char_props = args[1].get("org.bluez.GattCharacteristic1")
             if gatt_char_props:
                 uuid = gatt_char_props.get("UUID")
                 if uuid and uuid[1] == KINGSONG_READ_CHARACTER_UUID:
-                    self._create_task(self.ks_init(args[0]))
-
-    def _cleanup_task(self, task):
-        logger.info("cleanup task %r", task)
-        self._tasks.remove(task)
-
-    def _create_task(self, coro):
-        task = asyncio.get_event_loop().create_task(coro)
-        logger.info("created task %r", task)
-        self._tasks.append(task)
-        task.add_done_callback(self._cleanup_task)
+                    euc.utils.create_task(self.ks_init(args[0]))
