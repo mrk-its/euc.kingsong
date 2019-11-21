@@ -1,11 +1,9 @@
 import asyncio
 import dbussy
 import ravel
-from pprint import pprint
 import time
 import logging
 import struct
-import argparse
 
 from euc.base import EUCBase
 import euc.utils
@@ -29,7 +27,6 @@ class KS(EUCBase):
 
         self._init_t = 0.0
         self.is_connected = False
-
 
     async def run(self):
         self.system_bus.listen_objects_added(self.objects_added)
@@ -107,7 +104,9 @@ class KS(EUCBase):
             await char_itf.StartNotify()
             logger.debug("initialized")
         else:
-            logger.debug("just initialized %.1f seconds ago, skipping", t - self._init_t)
+            logger.debug(
+                "just initialized %.1f seconds ago, skipping", t - self._init_t
+            )
 
     async def ble_connect(self):
         logger.debug("connecting...")
@@ -164,7 +163,9 @@ class KS(EUCBase):
     def objects_removed(self, object_path, args):
         if not args[0].startswith(self.device_path):
             return
-        logger.debug("signal received: object “%s” removed: %s", object_path, repr(args))
+        logger.debug(
+            "signal received: object “%s” removed: %s", object_path, repr(args)
+        )
 
     @ravel.signal(
         name="object_added",
