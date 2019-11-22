@@ -12,14 +12,26 @@ class KS(EUCBase):
     KINGSONG_READ_CHARACTER_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
     KS_INIT_MAGIC = [170, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 155, 20, 90, 90]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.initialized = False
+
     async def run(self):
+        try_nr = 0
         while True:
-            if not self.is_connected:
+            if not self.is_connected or not self.is_initialized:
                 try:
                     await self.ble_connect()
+                    try_nr = 0
+                    continue
                 except (dbussy.DBusError, asyncio.TimeoutError) as e:
                     logger.debug(e)
-            await asyncio.sleep(30)
+                t = 5 * 2 ** min(4, try_nr)
+                logger.debug("reconnect in %s seconds", t)
+                await asyncio.sleep(t)
+                try_nr += 1
+            else:
+                await asyncio.sleep(5)
 
     def update_ks_properties(self, value):
         if len(value) > 16:
@@ -59,6 +71,7 @@ class KS(EUCBase):
         )
         await ks_char_itf.WriteValue(self.KS_INIT_MAGIC, {})
         await ks_char_itf.StartNotify()
+        self.is_initialized = True
         logger.debug("initialized")
 
     def on_properties_changed(
